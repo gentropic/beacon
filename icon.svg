@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Switchboard QR">
+  <!-- Background: dark surface to match theme; full bleed for maskable -->
+  <rect width="512" height="512" fill="#1a1f24"/>
+
+  <!-- Switchboard-style QR finder pattern, amber accent.
+       Safe zone is roughly the center 410×410 region for maskable icons. -->
+  <g transform="translate(96 96)">
+    <!-- 7x7 module finder pattern, each module = 45px (~315 total) shifted to 320 -->
+    <!-- Outer 7x7 ring -->
+    <rect x="0"   y="0"   width="320" height="320" fill="#f5a623"/>
+    <rect x="46"  y="46"  width="228" height="228" fill="#1a1f24"/>
+    <!-- Inner 3x3 solid -->
+    <rect x="91"  y="91"  width="138" height="138" fill="#f5a623"/>
+  </g>
+
+  <!-- Subtle corner ticks for "flight deck" feel -->
+  <g fill="#3a424b">
+    <rect x="16" y="16" width="32" height="2"/>
+    <rect x="16" y="16" width="2"  height="32"/>
+    <rect x="464" y="16" width="32" height="2"/>
+    <rect x="494" y="16" width="2"  height="32"/>
+    <rect x="16" y="494" width="32" height="2"/>
+    <rect x="16" y="464" width="2"  height="32"/>
+    <rect x="464" y="494" width="32" height="2"/>
+    <rect x="494" y="464" width="2"  height="32"/>
+  </g>
+</svg>
