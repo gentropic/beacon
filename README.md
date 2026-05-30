@@ -1,4 +1,4 @@
-# beacon — Switchboard QR
+# beacon
 
 A tiny installable PWA that turns a URL or text into a QR code, and — its reason
 for existing in the [GCU](https://gentropic.org) stack — turns a **capsule** share
@@ -67,7 +67,7 @@ domain unchanged.
 ## Maintenance notes
 
 - **Bump `VERSION` in `sw.js`** on every deploy that changes a precached asset
-  (currently `sb-qr-v3`). The `activate` handler deletes the stale cache so
+  (currently `beacon-v1`). The `activate` handler deletes the stale cache so
   installed users pick up the change.
 - The capsule logic (base64url decode, base45 encode, the `q:` fragment escaping)
   is inlined and mirrors the reference in `gentropic/cradle`'s `CAPSULES.md` and

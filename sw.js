@@ -1,5 +1,5 @@
-// Switchboard QR — minimal offline shell.
-const VERSION = 'sb-qr-v3';
+// beacon — minimal offline shell.
+const VERSION = 'beacon-v1';
 const SHELL = [
   './',
   './index.html',

@@ -1,7 +1,7 @@
 {
-  "name": "Switchboard QR",
-  "short_name": "QR",
-  "description": "Share a URL or text, get a QR code. That's it.",
+  "name": "beacon",
+  "short_name": "beacon",
+  "description": "Share a URL or text, get a QR code — and capsule links get a denser, more scannable QR automatically.",
   "id": "./",
   "lang": "en",
   "start_url": "./",
