@@ -211,6 +211,16 @@
     text-transform: uppercase;
   }
   .meta span.error { color: var(--warn); }
+  .cap-note {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-align: center;
+  }
+  .cap-note[hidden] { display: none; }
 
   footer {
     padding: 12px 20px;
@@ -242,6 +252,8 @@
       <span id="meta-len">0 chars</span>
       <span id="meta-status"></span>
     </div>
+
+    <div class="cap-note" id="cap-note" hidden></div>
 
     <div class="actions">
       <button id="btn-copy" disabled>Copy text</button>
@@ -2498,6 +2510,7 @@ const btnCopy = $('btn-copy');
 const btnShare = $('btn-share');
 const metaLen = $('meta-len');
 const metaStatus = $('meta-status');
+const capNote = $('cap-note');
 
 let lastSvg = '';
 
@@ -2515,29 +2528,155 @@ if (shared) {
   history.replaceState(null, '', location.pathname);
 }
 
-function buildSvg(text) {
-  // Switchboard-themed SVG: transparent background, themed cell color.
-  const qr = qrcode(0, 'M'); // auto type, medium error correction
-  qr.addData(text);
-  qr.make();
+// ───────────────────────────────────────────────────────────
+// Capsule QR optimization (see gentropic/cradle/CAPSULES.md).
+//
+// A "capsule" is a share URL whose fragment carries deflate-compressed
+// content in an inline scheme (inline: / i: / q:). The q: scheme uses
+// base45 (RFC 9285), whose alphabet is exactly the QR *alphanumeric*
+// charset — so the payload packs into an Alphanumeric QR segment at
+// 5.5 bits/char instead of Byte mode's 8, a ~16–22% smaller code.
+//
+// When we detect a capsule, we re-encode its payload to q: (a plain
+// base64url→base45 rebase of the same bytes — no decompression) and
+// emit a two-segment QR: the lowercase URL+scheme framing in Byte
+// mode, the base45 payload in Alphanumeric mode. Non-capsule input is
+// left exactly as-is. The textarea / Copy / Share text are untouched —
+// only the QR image is optimized (base64url stays nicer for chat).
+// ───────────────────────────────────────────────────────────
 
+const B45A = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+
+function b64urlToBytes(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesToB45(bytes) {
+  let out = '', i = 0;
+  for (; i + 1 < bytes.length; i += 2) {
+    let v = (bytes[i] << 8) | bytes[i + 1];
+    const c = v % 45; v = (v - c) / 45;
+    const d = v % 45; v = (v - d) / 45;
+    out += B45A[c] + B45A[d] + B45A[v];
+  }
+  if (i < bytes.length) {
+    let v = bytes[i];
+    const c = v % 45; v = (v - c) / 45;
+    out += B45A[c] + B45A[v];
+  }
+  return out;
+}
+
+// Reverse the URL-fragment escaping a capsule producer applies to q:
+// (% → %25, space → %20). Single left-to-right pass. No-op for the
+// base64url forms (they contain neither char).
+function fragDecode(s) {
+  let out = '';
+  for (let i = 0; i < s.length; ) {
+    if (s[i] === '%' && s[i+1] === '2' && s[i+2] === '5') { out += '%'; i += 3; }
+    else if (s[i] === '%' && s[i+1] === '2' && s[i+2] === '0') { out += ' '; i += 3; }
+    else { out += s[i]; i++; }
+  }
+  return out;
+}
+function fragEncode(s) { return s.replace(/%/g, '%25').replace(/ /g, '%20'); }
+
+// If `text` is a capsule URL, return { bytePrefix, alnum } — the two QR
+// segments. Otherwise null (caller encodes the whole thing as Byte).
+function planCapsuleQr(text) {
+  text = text.trim();
+  const hashIdx = text.indexOf('#');
+  if (hashIdx < 0) return null;
+  const urlPrefix = text.slice(0, hashIdx + 1);            // through '#'
+  const capsule = fragDecode(text.slice(hashIdx + 1));
+  const colon = capsule.indexOf(':');
+  if (colon < 0) return null;
+  const scheme = capsule.slice(0, colon);
+  const body = capsule.slice(colon + 1);
+
+  let codecChar = '', dictFrame = '', b45 = null;
+
+  if (scheme === 'i') {
+    codecChar = body[0];
+    if (codecChar !== 'r' && codecChar !== 'd') return null;   // brotli/unknown — leave Byte
+    try { b45 = bytesToB45(b64urlToBytes(body.slice(1))); } catch { return null; }
+  } else if (scheme === 'inline') {
+    const c2 = body.indexOf(':');
+    if (c2 < 0) return null;
+    const codec = body.slice(0, c2), payload = body.slice(c2 + 1);
+    if (codec === 'raw') codecChar = 'r';
+    else if (codec === 'deflate') codecChar = 'd';
+    else if (codec.indexOf('deflate-dict.') === 0) { codecChar = 'd'; dictFrame = '.' + codec.slice(13) + '_'; }
+    else return null;
+    try { b45 = bytesToB45(b64urlToBytes(payload)); } catch { return null; }
+  } else if (scheme === 'q') {
+    codecChar = body[0];
+    if (codecChar !== 'r' && codecChar !== 'd') return null;
+    let rest = body.slice(1);
+    if (rest[0] === '.') {
+      const us = rest.indexOf('_', 1);
+      if (us < 0) return null;
+      dictFrame = rest.slice(0, us + 1);
+      rest = rest.slice(us + 1);
+    }
+    b45 = rest;                                              // already base45
+  } else {
+    return null;                                            // gh:/url:/etc — not inline
+  }
+
+  const bytePrefix = urlPrefix + 'q:' + codecChar + dictFrame;  // lowercase framing → Byte
+  const alnum = fragEncode(b45);                                // escaped, all-alphanumeric
+  if (!/^[0-9A-Z $%*+\-.\/:]*$/.test(alnum)) return null;       // safety: pure alphanumeric only
+  return { bytePrefix, alnum };
+}
+
+function svgFromQr(qr) {
   const n = qr.getModuleCount();
-  const margin = 2;          // modules
+  const margin = 2;
   const size = n + margin * 2;
-
   let path = '';
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
-      if (qr.isDark(r, c)) {
-        path += `M${c + margin},${r + margin}h1v1h-1z`;
-      }
+      if (qr.isDark(r, c)) path += `M${c + margin},${r + margin}h1v1h-1z`;
     }
   }
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" role="img" aria-label="QR code">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" role="img" aria-label="QR code">
   <rect width="100%" height="100%" fill="#e8e3d5"/>
   <path d="${path}" fill="#1a1f24"/>
 </svg>`;
+  return { svg, n };
+}
+
+function buildSvg(text) {
+  const plan = planCapsuleQr(text);
+  const qr = qrcode(0, 'M'); // auto type, medium error correction
+  if (plan) {
+    qr.addData(plan.bytePrefix, 'Byte');
+    qr.addData(plan.alnum, 'Alphanumeric');
+  } else {
+    qr.addData(text);
+  }
+  qr.make();
+  const { svg, n } = svgFromQr(qr);
+
+  // For the optimization note, measure what a plain Byte-mode QR of the
+  // original text would have cost (it may not even fit — that's the most
+  // compelling case).
+  let nPlain = 0;
+  if (plan) {
+    try {
+      const q2 = qrcode(0, 'M');
+      q2.addData(text);
+      q2.make();
+      nPlain = q2.getModuleCount();
+    } catch { nPlain = -1; }
+  }
+  return { svg, optimized: !!plan, n, nPlain };
 }
 
 function render() {
@@ -2545,6 +2684,7 @@ function render() {
   metaLen.textContent = `${text.length} chars`;
   metaStatus.textContent = '';
   metaStatus.classList.remove('error');
+  capNote.hidden = true;
 
   if (!text.trim()) {
     frame.classList.add('empty');
@@ -2556,20 +2696,31 @@ function render() {
   }
 
   try {
-    lastSvg = buildSvg(text);
+    const out = buildSvg(text);
+    lastSvg = out.svg;
     frame.classList.remove('empty');
     frame.innerHTML = lastSvg;
     btnCopy.disabled = false;
     btnShare.disabled = !canSharePng();
-    // Show QR version (size in modules)
-    const n = frame.querySelector('svg').viewBox.baseVal.width - 4;
-    metaStatus.textContent = `${n}×${n}`;
+    metaStatus.textContent = `${out.n}×${out.n}`;
+
+    if (out.optimized) {
+      capNote.hidden = false;
+      if (out.nPlain === -1) {
+        capNote.textContent = '✦ capsule — QR-optimized (too large as plain text)';
+      } else if (out.nPlain > out.n) {
+        capNote.textContent = `✦ capsule — QR-optimized · ${out.nPlain}×${out.nPlain} → ${out.n}×${out.n}`;
+      } else {
+        capNote.textContent = '✦ capsule — QR-optimized';
+      }
+    }
   } catch (e) {
     frame.classList.add('empty');
     frame.innerHTML = '';
     lastSvg = '';
     metaStatus.textContent = 'too long';
     metaStatus.classList.add('error');
+    capNote.hidden = true;
     btnCopy.disabled = true;
     btnShare.disabled = true;
   }

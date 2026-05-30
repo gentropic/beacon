@@ -1,5 +1,5 @@
 // Switchboard QR — minimal offline shell.
-const VERSION = 'sb-qr-v2';
+const VERSION = 'sb-qr-v3';
 const SHELL = [
   './',
   './index.html',
