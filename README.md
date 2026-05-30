@@ -64,11 +64,22 @@ domain unchanged.
 | `icon.svg` / `icon-{192,512}.png` / `apple-touch-icon.png` | Icons |
 | `fonts/*.woff2` | Self-hosted Barlow + Space Mono (latin subset) |
 
+## Updates
+
+beacon is **offline-first but self-updating**, the same way ep is. The service
+worker serves the cached shell instantly (so it opens even on a dead connection),
+then in the background re-fetches `index.html`, byte-compares it to the cached copy,
+and — if you've deployed a change — raises a quiet **"New version available · Reload"**
+toast. There's also a **"check for updates"** link in the lower-right corner to force
+a check on demand.
+
+So **you don't need to bump anything to ship an update** — just deploy; installed
+users get the toast on their next visit (or when they tap the link). The `CACHE` name
+in `sw.js` (`beacon-v1`) is only a namespace; bump it solely if you ever need to force
+a hard cache reset for everyone.
+
 ## Maintenance notes
 
-- **Bump `VERSION` in `sw.js`** on every deploy that changes a precached asset
-  (currently `beacon-v1`). The `activate` handler deletes the stale cache so
-  installed users pick up the change.
 - The capsule logic (base64url decode, base45 encode, the `q:` fragment escaping)
   is inlined and mirrors the reference in `gentropic/cradle`'s `CAPSULES.md` and
   ep's `src/js/capsule.js`. If the capsule wire format ever changes, keep those in
